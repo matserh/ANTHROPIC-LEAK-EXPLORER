@@ -25,6 +25,9 @@
             margin-bottom: 20px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.04);
             border: 1px solid #e2e8f0;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
         .header h1 { font-size: 1.5rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
         .header h1 i { color: #eab308; }
@@ -73,16 +76,6 @@
         .file-size { font-size: 0.65rem; color: #94a3b8; background: #f1f5f9; padding: 4px 10px; border-radius: 30px; }
         .folder-content { display: none; border-top: 1px solid #f1f5f9; background: #fefefe; padding: 8px 0; }
         .folder-content.open { display: block; }
-        .sub-file {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 12px;
-            cursor: pointer;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            color: #475569;
-        }
         .code-view {
             background: #0d1117;
             border-radius: 24px;
@@ -109,7 +102,7 @@
         <div class="header">
             <h1><i class="fas fa-code"></i> Anthropic Leak</h1>
             <p>Exploration du code source de Claude Code</p>
-            <input type="text" class="search-box" id="search" placeholder="🔍 Rechercher un fichier..." autocomplete="off">
+            <input type="text" class="search-box" id="search" placeholder="🔍 Rechercher un fichier ou dossier..." autocomplete="off">
             <div class="stats" id="stats">📄 Chargement...</div>
         </div>
         <div id="browserView"></div>
@@ -122,15 +115,17 @@
     <script>
         let fileData = {};
         let fileTree = {};
+        let scrollPosition = 0;
 
         async function loadData() {
             try {
                 const res = await fetch('data.json');
                 fileData = await res.json();
                 const files = Object.keys(fileData);
-                document.getElementById('stats').innerHTML = `📄 ${files.length} fichiers source • 📁 ${new Set(files.map(f => f.split('/')[0])).size} dossiers`;
+                document.getElementById('stats').innerHTML = `📄 ${files.length} fichiers source • 📁 ${new Set(files.map(f => f.split('/')[0])).size} dossiers • ${(Object.values(fileData).join('').length / 1024 / 1024).toFixed(2)} MB`;
                 buildTree(files);
                 renderBrowser();
+                restoreScroll();
             } catch(e) {
                 document.getElementById('stats').innerHTML = '❌ Erreur de chargement';
             }
@@ -157,7 +152,7 @@
             renderNode(fileTree, container);
         }
 
-        function renderNode(node, container) {
+        function renderNode(node, container, level = 0) {
             const folders = Object.keys(node).filter(k => k !== '_files').sort();
             const files = node._files || [];
 
@@ -165,8 +160,9 @@
                 const folderId = 'f_' + Math.random().toString(36).substr(2, 8);
                 const div = document.createElement('div');
                 div.className = 'folder-item';
+                div.setAttribute('data-search', folder.toLowerCase());
                 div.innerHTML = `
-                    <div class="folder-header" onclick="toggleFolder('${folderId}')">
+                    <div class="folder-header" onclick="toggleFolder('${folderId}', this)">
                         <i class="fas fa-folder"></i>
                         <span class="folder-name">${folder}</span>
                         <i class="fas fa-chevron-down" style="font-size: 0.7rem; color: #94a3b8;"></i>
@@ -175,38 +171,55 @@
                 `;
                 container.appendChild(div);
                 const sub = document.getElementById(folderId);
-                renderNode(node[folder], sub);
+                renderNode(node[folder], sub, level + 1);
             }
 
             for (const file of files.sort((a,b) => a.name.localeCompare(b.name))) {
                 const div = document.createElement('div');
                 div.className = 'file-item';
+                div.setAttribute('data-search', file.name.toLowerCase());
+                div.setAttribute('data-path', file.path);
                 div.innerHTML = `
                     <div class="file-header" onclick="openFile('${file.path}')">
                         <i class="fas fa-file-code"></i>
                         <span class="file-name">${file.name}</span>
-                        <span class="file-size">${file.name.split('.').pop().toUpperCase()}</span>
+                        <span class="file-size">${file.name.split('.').pop().toUpperCase()} • ${getFileSize(file.path)}</span>
                     </div>
                 `;
                 container.appendChild(div);
             }
         }
 
-        window.toggleFolder = (id) => {
+        function getFileSize(path) {
+            const content = fileData[path];
+            if (!content) return '0 KB';
+            const kb = content.length / 1024;
+            if (kb < 1) return `${content.length} B`;
+            if (kb < 1024) return `${kb.toFixed(1)} KB`;
+            return `${(kb/1024).toFixed(1)} MB`;
+        }
+
+        window.toggleFolder = (id, header) => {
             const content = document.getElementById(id);
             content.classList.toggle('open');
+            const icon = header.querySelector('.fa-chevron-down');
+            if (icon) {
+                icon.style.transform = content.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+            }
         };
 
         function openFile(path) {
+            scrollPosition = window.scrollY;
             document.getElementById('browserView').style.display = 'none';
             document.getElementById('codeView').style.display = 'block';
             const codeDiv = document.getElementById('codeContent');
             const content = fileData[path];
             if (content) {
+                const lines = content.split('\n').length;
                 const ext = path.split('.').pop();
                 const language = ext === 'ts' || ext === 'tsx' ? 'typescript' : ext === 'js' ? 'javascript' : ext === 'json' ? 'json' : ext === 'md' ? 'markdown' : '';
                 const highlighted = language ? hljs.highlight(content, { language }).value : escapeHtml(content);
-                codeDiv.innerHTML = `<pre><code class="language-${language}">${highlighted}</code></pre>`;
+                codeDiv.innerHTML = `<pre><code class="language-${language}">${highlighted}</code><div style="text-align:right; font-size:0.6rem; color:#6b7280; padding:8px 12px; border-top:1px solid #2d2d3a;">📄 ${lines} lignes • ${getFileSize(path)}</div></pre>`;
             } else {
                 codeDiv.innerHTML = '<div class="loading">❌ Fichier introuvable</div>';
             }
@@ -215,6 +228,7 @@
         function goBack() {
             document.getElementById('browserView').style.display = 'block';
             document.getElementById('codeView').style.display = 'none';
+            setTimeout(() => window.scrollTo(0, scrollPosition), 50);
         }
 
         function escapeHtml(text) {
@@ -226,12 +240,25 @@
             });
         }
 
+        function restoreScroll() {
+            if (scrollPosition > 0) {
+                window.scrollTo(0, scrollPosition);
+                scrollPosition = 0;
+            }
+        }
+
+        // Recherche améliorée (fichiers + dossiers)
         document.getElementById('search').addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase();
             const items = document.querySelectorAll('.file-item, .folder-item');
             items.forEach(item => {
-                const text = item.innerText.toLowerCase();
-                item.style.display = term === '' || text.includes(term) ? '' : 'none';
+                const searchText = item.getAttribute('data-search') || item.innerText.toLowerCase();
+                if (term === '') {
+                    item.style.display = '';
+                    // Réouvrir les dossiers parents si besoin ?
+                } else {
+                    item.style.display = searchText.includes(term) ? '' : 'none';
+                }
             });
         });
 
