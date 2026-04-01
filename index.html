@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>🔍 Anthropic Leak - Code Explorer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 16px;
+            padding-bottom: 80px;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header {
+            background: white;
+            border-radius: 28px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            border: 1px solid #e2e8f0;
+        }
+        .header h1 { font-size: 1.5rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .header h1 i { color: #eab308; }
+        .header p { color: #64748b; font-size: 0.8rem; margin: 8px 0 16px; }
+        .search-box {
+            width: 100%;
+            padding: 14px 18px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 60px;
+            font-size: 0.9rem;
+        }
+        .search-box:focus { outline: none; border-color: #eab308; background: white; }
+        .stats { background: #f1f5f9; padding: 4px 12px; border-radius: 30px; font-size: 0.7rem; display: inline-block; margin-top: 12px; }
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 40px;
+            padding: 10px 18px;
+            margin-bottom: 16px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #2c5f2d;
+            cursor: pointer;
+        }
+        .folder-item, .file-item {
+            background: white;
+            border-radius: 20px;
+            margin-bottom: 8px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+        .folder-header, .file-header {
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+        }
+        .folder-header:active, .file-header:active { background: #f8fafc; }
+        .folder-header i, .file-header i { font-size: 1.2rem; width: 28px; }
+        .folder-name, .file-name { flex: 1; font-weight: 500; font-size: 0.9rem; color: #1e293b; }
+        .file-size { font-size: 0.65rem; color: #94a3b8; background: #f1f5f9; padding: 4px 10px; border-radius: 30px; }
+        .folder-content { display: none; border-top: 1px solid #f1f5f9; background: #fefefe; padding: 8px 0; }
+        .folder-content.open { display: block; }
+        .sub-file {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            color: #475569;
+        }
+        .sub-file:active { background: #f1f5f9; }
+        .code-view {
+            background: #1e293b;
+            border-radius: 24px;
+            padding: 20px;
+            overflow-x: auto;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            color: #e2e8f0;
+            margin-top: 16px;
+        }
+        .loading { color: #94a3b8; text-align: center; padding: 40px; }
+        .footer { text-align: center; color: #94a3b8; font-size: 0.65rem; margin-top: 30px; }
+        @media (max-width: 600px) { body { padding: 12px; } .code-view { font-size: 10px; padding: 14px; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-code"></i> Anthropic Leak</h1>
+            <p>Exploration du code source de Claude Code</p>
+            <input type="text" class="search-box" id="search" placeholder="🔍 Rechercher un fichier..." autocomplete="off">
+            <div class="stats" id="stats">📄 Chargement...</div>
+        </div>
+        <div id="browserView"></div>
+        <div id="codeView" style="display: none;">
+            <div class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i> Retour</div>
+            <div class="code-view" id="codeContent"></div>
+        </div>
+        <div class="footer"><i class="fas fa-github"></i> exploration interactive</div>
+    </div>
+    <script>
+        let fileData = {};
+        let fileTree = {};
+
+        async function loadData() {
+            try {
+                const res = await fetch('data.json');
+                fileData = await res.json();
+                const files = Object.keys(fileData);
+                document.getElementById('stats').innerHTML = `📄 ${files.length} fichiers source`;
+                buildTree(files);
+                renderBrowser();
+            } catch(e) {
+                document.getElementById('stats').innerHTML = '❌ Erreur de chargement';
+            }
+        }
+
+        function buildTree(files) {
+            fileTree = {};
+            for (const file of files) {
+                const parts = file.split('/');
+                let current = fileTree;
+                for (let i = 0; i < parts.length - 1; i++) {
+                    if (!current[parts[i]]) current[parts[i]] = {};
+                    current = current[parts[i]];
+                }
+                const filename = parts[parts.length - 1];
+                if (!current._files) current._files = [];
+                current._files.push({ name: filename, path: file });
+            }
+        }
+
+        function renderBrowser() {
+            const container = document.getElementById('browserView');
+            container.innerHTML = '';
+            renderNode(fileTree, container);
+        }
+
+        function renderNode(node, container) {
+            const folders = Object.keys(node).filter(k => k !== '_files').sort();
+            const files = node._files || [];
+
+            for (const folder of folders) {
+                const folderId = 'f_' + Math.random().toString(36).substr(2, 8);
+                const div = document.createElement('div');
+                div.className = 'folder-item';
+                div.innerHTML = `
+                    <div class="folder-header" onclick="toggleFolder('${folderId}')">
+                        <i class="fas fa-folder"></i>
+                        <span class="folder-name">${folder}</span>
+                        <i class="fas fa-chevron-down" style="font-size: 0.7rem; color: #94a3b8;"></i>
+                    </div>
+                    <div class="folder-content" id="${folderId}"></div>
+                `;
+                container.appendChild(div);
+                const sub = document.getElementById(folderId);
+                renderNode(node[folder], sub);
+            }
+
+            for (const file of files.sort((a,b) => a.name.localeCompare(b.name))) {
+                const div = document.createElement('div');
+                div.className = 'file-item';
+                div.innerHTML = `
+                    <div class="file-header" onclick="openFile('${file.path}')">
+                        <i class="fas fa-file-code"></i>
+                        <span class="file-name">${file.name}</span>
+                        <span class="file-size">${file.name.split('.').pop().toUpperCase()}</span>
+                    </div>
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        window.toggleFolder = (id) => {
+            const content = document.getElementById(id);
+            content.classList.toggle('open');
+        };
+
+        function openFile(path) {
+            document.getElementById('browserView').style.display = 'none';
+            document.getElementById('codeView').style.display = 'block';
+            const codeDiv = document.getElementById('codeContent');
+            const content = fileData[path];
+            if (content) {
+                codeDiv.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
+            } else {
+                codeDiv.innerHTML = '<div class="loading">❌ Fichier introuvable</div>';
+            }
+        }
+
+        function goBack() {
+            document.getElementById('browserView').style.display = 'block';
+            document.getElementById('codeView').style.display = 'none';
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        document.getElementById('search').addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const items = document.querySelectorAll('.file-item, .folder-item');
+            items.forEach(item => {
+                const text = item.innerText.toLowerCase();
+                item.style.display = term === '' || text.includes(term) ? '' : 'none';
+            });
+        });
+
+        loadData();
+    </script>
+</body>
+</html>
