@@ -14,20 +14,24 @@
         body {
             background: #f8fafc;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            padding: 16px;
+            padding: 0;
             padding-bottom: 80px;
         }
-        .container { max-width: 800px; margin: 0 auto; }
+        .container { max-width: 900px; margin: 0 auto; padding: 16px; }
+        
+        /* Header fixe */
         .header {
             background: white;
-            border-radius: 28px;
+            border-radius: 0 0 28px 28px;
             padding: 20px;
             margin-bottom: 20px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-            border: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
             position: sticky;
             top: 0;
-            z-index: 10;
+            z-index: 100;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(8px);
         }
         .header h1 { font-size: 1.5rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
         .header h1 i { color: #eab308; }
@@ -41,7 +45,19 @@
             font-size: 0.9rem;
         }
         .search-box:focus { outline: none; border-color: #eab308; background: white; }
-        .stats { background: #f1f5f9; padding: 4px 12px; border-radius: 30px; font-size: 0.7rem; display: inline-block; margin-top: 12px; }
+        .stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .stat-badge {
+            background: #f1f5f9;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            color: #475569;
+        }
         .back-btn {
             display: inline-flex;
             align-items: center;
@@ -76,42 +92,86 @@
         .file-size { font-size: 0.65rem; color: #94a3b8; background: #f1f5f9; padding: 4px 10px; border-radius: 30px; }
         .folder-content { display: none; border-top: 1px solid #f1f5f9; background: #fefefe; padding: 8px 0; }
         .folder-content.open { display: block; }
+        
+        /* Code viewer avec numéros de lignes */
         .code-view {
             background: #0d1117;
             border-radius: 24px;
-            padding: 0;
             overflow: hidden;
             margin-top: 16px;
             border: 1px solid #2d2d3a;
         }
-        .code-view pre {
-            margin: 0;
-            padding: 20px;
+        .code-wrapper {
+            display: flex;
             overflow-x: auto;
+        }
+        .line-numbers {
+            background: #0a0c10;
+            color: #6e7681;
+            text-align: right;
+            padding: 20px 12px;
             font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
             font-size: 12px;
             line-height: 1.5;
+            user-select: none;
+            border-right: 1px solid #2d2d3a;
+        }
+        .line-numbers div {
+            padding: 0 4px;
+        }
+        .code-content {
+            flex: 1;
+            overflow-x: auto;
+        }
+        .code-content pre {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            background: #0d1117;
+        }
+        .code-content code {
+            display: block;
+        }
+        .file-footer {
+            text-align: right;
+            font-size: 0.6rem;
+            color: #6b7280;
+            padding: 8px 16px;
+            border-top: 1px solid #2d2d3a;
+            background: #0a0c10;
         }
         .loading { color: #94a3b8; text-align: center; padding: 40px; }
-        .footer { text-align: center; color: #94a3b8; font-size: 0.65rem; margin-top: 30px; }
-        @media (max-width: 600px) { body { padding: 12px; } .code-view pre { font-size: 10px; padding: 14px; } }
+        .footer { text-align: center; color: #94a3b8; font-size: 0.65rem; margin-top: 30px; padding: 16px; }
+        @media (max-width: 600px) {
+            .container { padding: 12px; }
+            .line-numbers, .code-content pre { font-size: 10px; }
+            .line-numbers { padding: 14px 8px; }
+            .code-content pre { padding: 14px; }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
+    <div class="header">
+        <div class="container" style="padding:0;">
             <h1><i class="fas fa-code"></i> Anthropic Leak</h1>
             <p>Exploration du code source de Claude Code</p>
             <input type="text" class="search-box" id="search" placeholder="🔍 Rechercher un fichier ou dossier..." autocomplete="off">
-            <div class="stats" id="stats">📄 Chargement...</div>
+            <div class="stats" id="stats">
+                <span class="stat-badge">📄 Chargement...</span>
+            </div>
         </div>
+    </div>
+    <div class="container">
         <div id="browserView"></div>
         <div id="codeView" style="display: none;">
             <div class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i> Retour</div>
             <div class="code-view" id="codeContent"></div>
         </div>
-        <div class="footer"><i class="fas fa-github"></i> exploration interactive | <i class="fas fa-code"></i> syntax highlighting</div>
+        <div class="footer"><i class="fas fa-github"></i> exploration interactive | <i class="fas fa-code"></i> syntax highlighting | <i class="fas fa-list-ol"></i> numéros de lignes</div>
     </div>
+
     <script>
         let fileData = {};
         let fileTree = {};
@@ -122,12 +182,17 @@
                 const res = await fetch('data.json');
                 fileData = await res.json();
                 const files = Object.keys(fileData);
-                document.getElementById('stats').innerHTML = `📄 ${files.length} fichiers source • 📁 ${new Set(files.map(f => f.split('/')[0])).size} dossiers • ${(Object.values(fileData).join('').length / 1024 / 1024).toFixed(2)} MB`;
+                const totalSize = (Object.values(fileData).join('').length / 1024 / 1024).toFixed(2);
+                document.getElementById('stats').innerHTML = `
+                    <span class="stat-badge">📄 ${files.length} fichiers</span>
+                    <span class="stat-badge">📁 ${new Set(files.map(f => f.split('/')[0])).size} dossiers</span>
+                    <span class="stat-badge">💾 ${totalSize} MB</span>
+                `;
                 buildTree(files);
                 renderBrowser();
                 restoreScroll();
             } catch(e) {
-                document.getElementById('stats').innerHTML = '❌ Erreur de chargement';
+                document.getElementById('stats').innerHTML = '<span class="stat-badge">❌ Erreur de chargement</span>';
             }
         }
 
@@ -152,7 +217,7 @@
             renderNode(fileTree, container);
         }
 
-        function renderNode(node, container, level = 0) {
+        function renderNode(node, container) {
             const folders = Object.keys(node).filter(k => k !== '_files').sort();
             const files = node._files || [];
 
@@ -171,7 +236,7 @@
                 `;
                 container.appendChild(div);
                 const sub = document.getElementById(folderId);
-                renderNode(node[folder], sub, level + 1);
+                renderNode(node[folder], sub);
             }
 
             for (const file of files.sort((a,b) => a.name.localeCompare(b.name))) {
@@ -179,24 +244,16 @@
                 div.className = 'file-item';
                 div.setAttribute('data-search', file.name.toLowerCase());
                 div.setAttribute('data-path', file.path);
+                const lines = fileData[file.path] ? fileData[file.path].split('\n').length : 0;
                 div.innerHTML = `
                     <div class="file-header" onclick="openFile('${file.path}')">
                         <i class="fas fa-file-code"></i>
                         <span class="file-name">${file.name}</span>
-                        <span class="file-size">${file.name.split('.').pop().toUpperCase()} • ${getFileSize(file.path)}</span>
+                        <span class="file-size">📄 ${lines} lignes • ${file.name.split('.').pop().toUpperCase()}</span>
                     </div>
                 `;
                 container.appendChild(div);
             }
-        }
-
-        function getFileSize(path) {
-            const content = fileData[path];
-            if (!content) return '0 KB';
-            const kb = content.length / 1024;
-            if (kb < 1) return `${content.length} B`;
-            if (kb < 1024) return `${kb.toFixed(1)} KB`;
-            return `${(kb/1024).toFixed(1)} MB`;
         }
 
         window.toggleFolder = (id, header) => {
@@ -215,11 +272,28 @@
             const codeDiv = document.getElementById('codeContent');
             const content = fileData[path];
             if (content) {
-                const lines = content.split('\n').length;
+                const lines = content.split('\n');
                 const ext = path.split('.').pop();
                 const language = ext === 'ts' || ext === 'tsx' ? 'typescript' : ext === 'js' ? 'javascript' : ext === 'json' ? 'json' : ext === 'md' ? 'markdown' : '';
                 const highlighted = language ? hljs.highlight(content, { language }).value : escapeHtml(content);
-                codeDiv.innerHTML = `<pre><code class="language-${language}">${highlighted}</code><div style="text-align:right; font-size:0.6rem; color:#6b7280; padding:8px 12px; border-top:1px solid #2d2d3a;">📄 ${lines} lignes • ${getFileSize(path)}</div></pre>`;
+                
+                // Générer les numéros de lignes
+                let lineNumbersHtml = '';
+                for (let i = 1; i <= lines.length; i++) {
+                    lineNumbersHtml += `<div>${i}</div>`;
+                }
+                
+                codeDiv.innerHTML = `
+                    <div class="code-wrapper">
+                        <div class="line-numbers">${lineNumbersHtml}</div>
+                        <div class="code-content">
+                            <pre><code class="language-${language}">${highlighted}</code></pre>
+                        </div>
+                    </div>
+                    <div class="file-footer">
+                        📄 ${lines.length} lignes • ${(content.length / 1024).toFixed(1)} KB • ${path}
+                    </div>
+                `;
             } else {
                 codeDiv.innerHTML = '<div class="loading">❌ Fichier introuvable</div>';
             }
@@ -247,7 +321,7 @@
             }
         }
 
-        // Recherche améliorée (fichiers + dossiers)
+        // Recherche
         document.getElementById('search').addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase();
             const items = document.querySelectorAll('.file-item, .folder-item');
@@ -255,7 +329,6 @@
                 const searchText = item.getAttribute('data-search') || item.innerText.toLowerCase();
                 if (term === '') {
                     item.style.display = '';
-                    // Réouvrir les dossiers parents si besoin ?
                 } else {
                     item.style.display = searchText.includes(term) ? '' : 'none';
                 }
