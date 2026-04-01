@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>🔍 Anthropic Leak - Code Explorer</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23eab308'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -79,22 +83,25 @@
             font-size: 0.8rem;
             color: #475569;
         }
-        .sub-file:active { background: #f1f5f9; }
         .code-view {
-            background: #1e293b;
+            background: #0d1117;
             border-radius: 24px;
+            padding: 0;
+            overflow: hidden;
+            margin-top: 16px;
+            border: 1px solid #2d2d3a;
+        }
+        .code-view pre {
+            margin: 0;
             padding: 20px;
             overflow-x: auto;
-            font-family: monospace;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
             font-size: 12px;
             line-height: 1.5;
-            white-space: pre-wrap;
-            color: #e2e8f0;
-            margin-top: 16px;
         }
         .loading { color: #94a3b8; text-align: center; padding: 40px; }
         .footer { text-align: center; color: #94a3b8; font-size: 0.65rem; margin-top: 30px; }
-        @media (max-width: 600px) { body { padding: 12px; } .code-view { font-size: 10px; padding: 14px; } }
+        @media (max-width: 600px) { body { padding: 12px; } .code-view pre { font-size: 10px; padding: 14px; } }
     </style>
 </head>
 <body>
@@ -110,7 +117,7 @@
             <div class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i> Retour</div>
             <div class="code-view" id="codeContent"></div>
         </div>
-        <div class="footer"><i class="fas fa-github"></i> exploration interactive</div>
+        <div class="footer"><i class="fas fa-github"></i> exploration interactive | <i class="fas fa-code"></i> syntax highlighting</div>
     </div>
     <script>
         let fileData = {};
@@ -121,7 +128,7 @@
                 const res = await fetch('data.json');
                 fileData = await res.json();
                 const files = Object.keys(fileData);
-                document.getElementById('stats').innerHTML = `📄 ${files.length} fichiers source`;
+                document.getElementById('stats').innerHTML = `📄 ${files.length} fichiers source • 📁 ${new Set(files.map(f => f.split('/')[0])).size} dossiers`;
                 buildTree(files);
                 renderBrowser();
             } catch(e) {
@@ -196,7 +203,10 @@
             const codeDiv = document.getElementById('codeContent');
             const content = fileData[path];
             if (content) {
-                codeDiv.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
+                const ext = path.split('.').pop();
+                const language = ext === 'ts' || ext === 'tsx' ? 'typescript' : ext === 'js' ? 'javascript' : ext === 'json' ? 'json' : ext === 'md' ? 'markdown' : '';
+                const highlighted = language ? hljs.highlight(content, { language }).value : escapeHtml(content);
+                codeDiv.innerHTML = `<pre><code class="language-${language}">${highlighted}</code></pre>`;
             } else {
                 codeDiv.innerHTML = '<div class="loading">❌ Fichier introuvable</div>';
             }
